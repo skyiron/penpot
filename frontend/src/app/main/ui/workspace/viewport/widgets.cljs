@@ -277,7 +277,6 @@
         pos       (gpt/point x (- y (/ 35 zoom)))
 
         frame-id  (:id frame)
-        flow-id   (:id flow)
         flow-name (:name flow)
 
         on-pointer-down
@@ -290,11 +289,6 @@
                (dom/prevent-default event)
                (dom/stop-propagation event)
                (st/emit! (dcm/go-to-viewer params))))))
-
-        on-double-click
-        (mf/use-fn
-         (mf/deps flow-id)
-         #(st/emit! (dwi/start-rename-flow flow-id)))
 
         on-pointer-enter
         (mf/use-fn
@@ -319,7 +313,6 @@
       [:div {:class (stl/css-case :frame-flow-badge-content true
                                   :selected is-selected)
              :on-pointer-down on-pointer-down
-             :on-double-click on-double-click
              :on-pointer-enter on-pointer-enter
              :on-pointer-leave on-pointer-leave}
        [:> icon* {:icon-id i/play

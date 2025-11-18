@@ -38,6 +38,11 @@
     --button-fg-color: var(--button-hover-fg-color);
   }
 
+  &[aria-pressed="true"] {
+    --button-bg-color: var(--button-active-bg-color);
+    --button-fg-color: var(--button-hover-fg-color);
+  }
+
   &:active {
     --button-bg-color: var(--button-active-bg-color);
   }
