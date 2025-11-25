@@ -4,46 +4,46 @@
 ;;
 ;; Copyright (c) KALEIDOS INC
 
-(ns app.render-wasm.api
-  "A WASM based render API"
-  (:require
-   ["react-dom/server" :as rds]
-   [app.common.data :as d]
-   [app.common.data.macros :as dm]
-   [app.common.files.helpers :as cfh]
-   [app.common.logging :as log]
-   [app.common.math :as mth]
-   [app.common.types.fills :as types.fills]
-   [app.common.types.fills.impl :as types.fills.impl]
-   [app.common.types.path :as path]
-   [app.common.types.path.impl :as path.impl]
-   [app.common.types.shape.layout :as ctl]
-   [app.common.uuid :as uuid]
-   [app.config :as cf]
-   [app.main.fonts :as fonts]
-   [app.main.refs :as refs]
-   [app.main.render :as render]
-   [app.main.store :as st]
-   [app.main.worker :as mw]
-   [app.render-wasm.api.fonts :as f]
-   [app.render-wasm.api.texts :as t]
-   [app.render-wasm.deserializers :as dr]
-   [app.render-wasm.helpers :as h]
-   [app.render-wasm.mem :as mem]
-   [app.render-wasm.mem.heap32 :as mem.h32]
-   [app.render-wasm.performance :as perf]
-   [app.render-wasm.serializers :as sr]
-   [app.render-wasm.serializers.color :as sr-clr]
-   [app.render-wasm.svg-fills :as svg-fills]
+ (ns app.render-wasm.api
+   "A WASM based render API"
+   (:require
+    ["react-dom/server" :as rds]
+    [app.common.data :as d]
+    [app.common.data.macros :as dm]
+    [app.common.files.helpers :as cfh]
+    [app.common.logging :as log]
+    [app.common.math :as mth]
+    [app.common.types.fills :as types.fills]
+    [app.common.types.fills.impl :as types.fills.impl]
+    [app.common.types.path :as path]
+    [app.common.types.path.impl :as path.impl]
+    [app.common.types.shape.layout :as ctl]
+    [app.common.uuid :as uuid]
+    [app.config :as cf]
+    [app.main.fonts :as fonts]
+    [app.main.refs :as refs]
+    [app.main.render :as render]
+    [app.main.store :as st]
+    [app.main.worker :as mw]
+    [app.render-wasm.api.fonts :as f]
+    [app.render-wasm.api.texts :as t]
+    [app.render-wasm.deserializers :as dr]
+    [app.render-wasm.helpers :as h]
+    [app.render-wasm.mem :as mem]
+    [app.render-wasm.mem.heap32 :as mem.h32]
+    [app.render-wasm.performance :as perf]
+    [app.render-wasm.serializers :as sr]
+    [app.render-wasm.serializers.color :as sr-clr]
+    [app.render-wasm.svg-fills :as svg-fills]
    ;; FIXME: rename; confunsing name
-   [app.render-wasm.wasm :as wasm]
-   [app.util.debug :as dbg]
-   [app.util.functions :as fns]
-   [app.util.globals :as ug]
-   [app.util.text.content :as tc]
-   [beicon.v2.core :as rx]
-   [promesa.core :as p]
-   [rumext.v2 :as mf]))
+    [app.render-wasm.wasm :as wasm]
+    [app.util.debug :as dbg]
+    [app.util.functions :as fns]
+    [app.util.globals :as ug]
+    [app.util.text.content :as tc]
+    [beicon.v2.core :as rx]
+    [promesa.core :as p]
+    [rumext.v2 :as mf]))
 
 (def use-dpr? (contains? cf/flags :render-wasm-dpr))
 
@@ -783,19 +783,10 @@
                     hidden)))
         shadows))
 
-(defn set-shape-text-content
-  "This function sets shape text content and returns a stream that loads the needed fonts asynchronously"
-  [shape-id content]
-
-  (h/call wasm/internal-module "_clear_shape_text")
-
-  (set-shape-vertical-align (get content :vertical-align))
-
+(defn get-fallback-fonts [content]
   (let [paragraph-set (first (get content :children))
         paragraphs    (get paragraph-set :children)
-        fonts         (fonts/get-content-fonts content)
         total         (count paragraphs)]
-
     (loop [index  0
            emoji? false
            langs  #{}]
@@ -818,16 +809,66 @@
                      langs))))
 
         (let [updated-fonts
-              (-> fonts
+              (-> #{}
                   (cond-> ^boolean emoji? (f/add-emoji-font))
                   (f/add-noto-fonts langs))
-              fallback-fonts (filter #(get % :is-fallback) updated-fonts)
-              result (f/store-fonts shape-id updated-fonts)]
+              fallback-fonts (filter #(get % :is-fallback) updated-fonts)]
 
-          (f/load-fallback-fonts-for-editor! fallback-fonts)
-          (h/call wasm/internal-module "_update_shape_text_layout")
+          fallback-fonts)))))
 
-          result)))))
+(defn set-shape-text-content
+  "This function sets shape text content and returns a stream that loads the needed fonts asynchronously"
+  [shape-id content]
+
+  (h/call wasm/internal-module "_clear_shape_text")
+
+  (set-shape-vertical-align (get content :vertical-align))
+
+  (let [fonts         (fonts/get-content-fonts content)
+        fallback-fonts (get-fallback-fonts content)
+        all-fonts (concat fonts fallback-fonts)
+        result (f/store-fonts shape-id all-fonts)]
+    (f/load-fallback-fonts-for-editor! fallback-fonts)
+    (h/call wasm/internal-module "_update_shape_text_layout")
+    result))
+
+  ;; (let [paragraph-set (first (get content :children))
+  ;;       paragraphs    (get paragraph-set :children)
+  ;;       fonts         (fonts/get-content-fonts content)
+  ;;       total         (count paragraphs)]
+
+  ;;   (loop [index  0
+  ;;          emoji? false
+  ;;          langs  #{}]
+
+  ;;     (if (< index total)
+  ;;       (let [paragraph (nth paragraphs index)
+  ;;             spans    (get paragraph :children)]
+  ;;         (if (empty? (seq spans))
+  ;;           (recur (inc index)
+  ;;                  emoji?
+  ;;                  langs)
+
+  ;;           (let [text   (apply str (map :text spans))
+  ;;                 emoji? (if emoji? emoji? (t/contains-emoji? text))
+  ;;                 langs  (t/collect-used-languages langs text)]
+
+  ;;             (t/write-shape-text spans paragraph text)
+  ;;             (recur (inc index)
+  ;;                    emoji?
+  ;;                    langs))))
+
+  ;;       (let [updated-fonts
+  ;;             (-> fonts
+  ;;                 (cond-> ^boolean emoji? (f/add-emoji-font))
+  ;;                 (f/add-noto-fonts langs))
+  ;;             fallback-fonts (filter #(get % :is-fallback) updated-fonts)
+  ;;             result (f/store-fonts shape-id updated-fonts)]
+
+  ;;         (f/load-fallback-fonts-for-editor! fallback-fonts)
+  ;;         (h/call wasm/internal-module "_update_shape_text_layout")
+
+  ;;         result)))))
 
 (defn set-shape-grow-type
   [grow-type]
