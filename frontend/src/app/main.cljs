@@ -92,7 +92,7 @@
 (defn ^:export init
   []
   (mw/init!)
-  (i18n/init! cf/translations)
+  (i18n/init)
   (cur/init-styles)
   (thr/init!)
   (init-ui)
@@ -115,10 +115,10 @@
   (reinit))
 
 ;; Reload the UI when the language changes
-(add-watch
- i18n/locale "locale"
- (fn [_ _ old-value current-value]
-   (when (not= old-value current-value)
-     (reinit))))
+(add-watch i18n/state "main"
+           (fn [_ _ ov cv]
+             (when (not= ov cv)
+               (prn "CHANGE" (i18n/tr "common.publish"))
+               (reinit))))
 
 (set! (.-stackTraceLimit js/Error) 50)

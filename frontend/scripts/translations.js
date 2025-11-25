@@ -336,6 +336,33 @@ async function synchronize(options, ...other) {
   });
 }
 
+async function build(options, ...other) {
+  const inputDir = "translations/";
+  const outputDir = "resources/public/js/";
+
+  await fs.mkdir(outputDir, { recursive: true });
+  const files = await fs.readdir(inputDir);
+
+  console.log(files);
+
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+
+    console.log(file);
+
+    const jsonPath = path.join(inputDir, file);
+    const content = await fs.readFile(jsonPath, "utf8");
+
+    // You can minify or validate here if you want
+    const obj = JSON.parse(content);
+
+    const esm = `export default ${JSON.stringify(obj, null, 0)};\n`;
+    const outputFile = path.join(outputDir, "translation." + file.replace(".json", ".js"));
+
+    await fs.writeFile(outputFile, esm);
+  }
+}
+
 const options = getopts(process.argv.slice(2), {
   boolean: ["h", "v"],
   alias: {
@@ -356,6 +383,8 @@ if (command === "rehash") {
   await deleteByPrefix(options, ...params);
 } else if (command === "fuzzy") {
   await markFuzzy(options, ...params);
+} else if (command === "build") {
+  await build(options, ...params);
 } else {
   console.log(`Translations manipulation script.
 How to use:
@@ -373,5 +402,6 @@ Available subcommands:
   sync            : synchronize baselocale file with all other locale files
   delete <prefix> : delete all entries that matches the prefix
   fuzzy <prefix>  : mark as fuzzy all entries that matches the prefix
+  build           : generate ESM files from JSON translations
 `);
 }

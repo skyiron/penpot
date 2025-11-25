@@ -10,19 +10,26 @@
    [app.common.data :as d]
    [app.common.logging :as log]
    [app.common.time :as ct]
-   [app.config :as cfg]
+   [app.config :as cf]
    [app.util.globals :as globals]
    [app.util.storage :as storage]
    [cuerdas.core :as str]
    [goog.object :as gobj]
+   [app.util.object :as obj]
+   [promesa.core :as p]
    [okulary.core :as l]
+   [app.util.modules :as mod]
    [rumext.v2 :as mf]))
 
 (log/set-level! :info)
 
 (def supported-locales
-  [{:label "English" :value "en"}
-   {:label "Español" :value "es"}
+  [{:label "English"
+    :value "en"
+    :load-fn #(mod/import "./translation.en.js")}
+   {:label "Español"
+    :value "es"
+    :load-fn #(mod/import "./translation.es.js")}
    {:label "Català" :value "ca"}
    {:label "Deutsch (community)" :value "de"}
    {:label "Dutch (community)" :value "nl"}
@@ -54,6 +61,11 @@
    {:label "简体中文 (community)" :value "zh_cn"}
    {:label "繁體中文 (community)" :value "zh_hant"}])
 
+(def ^:private load-fn-map
+  (d/index-by :value :load-fn supported-locales))
+
+(def ^:dynamic *current-locale* nil)
+
 (defn- parse-locale
   [locale]
   (let [locale (-> (str/lower locale)
@@ -75,43 +87,66 @@
         (if (contains? supported locale)
           locale
           (recur (rest locales)))
-        cfg/default-language))))
+        cf/default-language))))
 
 (defonce translations #js {})
-(defonce locale (l/atom nil))
+(defonce state (l/atom #(-> {:render 0 :locale cf/default-language})))
 
-(add-watch locale "common.time"
+(add-watch state "common.time"
            (fn [_ _ pv cv]
-             (when (not= pv cv)
-               (ct/set-default-locale! cv))))
+             (let [pv (get pv :locale)
+                   cv (get cv :locale)]
+               (when (not= pv cv)
+                 (ct/set-default-locale! cv)))))
 
-(defn init!
-  "Initialize the i18n module with translations.
+(defn- mark-locale-loaded
+  [state locale data]
+  (-> state
+      (update :render inc)
+      (update :translations assoc locale data)
+      (assoc :locale locale)))
 
-  The `data` is a javascript object for performance reasons. This code
-  is executed in the critical part (application bootstrap) and used in
-  many parts of the application."
-  [data]
-  (set! translations data)
-  (reset! locale (or (get storage/global ::locale) (autodetect))))
+(defn- load
+  [locale]
+  (if (obj/contains? translations locale)
+    (p/resolved true)
+    (if-let [load-fn (get load-fn-map locale)]
+      (->> (load-fn)
+           (p/fmap (fn [result] (unchecked-get result "default")))
+           (p/fnly (fn [result _cause]
+                     (unchecked-set translations locale result)
+                     (swap! state mark-locale-loaded locale result)))
+           (p/fmap (constantly true)))
+      (p/resolved false))))
 
+(defn init
+  "Initialize the i18n module"
+  []
+  (let [current-locale (or (get storage/global ::locale) (autodetect))]
+    (set! *current-locale* current-locale)
+    (reset! state {:locale current-locale :render 0})
+    (prn "INIT" current-locale)
+    (load current-locale)))
 
-(defn set-locale!
+(defn set-locale
   [lname]
-  (if (or (nil? lname)
-          (str/empty? lname))
-    (let [lname (autodetect)]
-      (swap! storage/global dissoc ::locale)
-      (reset! locale lname))
-    (let [supported (into #{} (map :value) supported-locales)
-          lname     (loop [locales (seq (parse-locale lname))]
-                      (if-let [locale (first locales)]
-                        (if (contains? supported locale)
-                          locale
-                          (recur (rest locales)))
-                        cfg/default-language))]
-      (swap! storage/global assoc ::locale lname)
-      (reset! locale lname))))
+  (let [lname (if (or (nil? lname)
+                      (str/empty? lname))
+                (autodetect)
+                (let [supported (into #{} (map :value) supported-locales)]
+                  (loop [locales (seq (parse-locale lname))]
+                    (if-let [locale (first locales)]
+                      (if (contains? supported locale)
+                        locale
+                        (recur (rest locales)))
+                      cf/default-language))))]
+
+    (->> (load lname)
+         (p/fmap (fn [o]
+                   (set! *current-locale* lname)
+                   (swap! storage/global assoc ::locale lname)
+                   (swap! state assoc :locale lname)
+                   o)))))
 
 (deftype C [val]
   IDeref
@@ -137,21 +172,21 @@
 (defn t
   ([locale code]
    (let [code  (name code)
-         value (gobj/getValueByKeys translations code locale)]
+         value (gobj/getValueByKeys translations locale code)]
      (if (empty-string? value)
-       (if (= cfg/default-language locale)
+       (if (= cf/default-language locale)
          code
-         (t cfg/default-language code))
+         (t cf/default-language code))
        (if (array? value)
          (aget value 0)
          value))))
   ([locale code & args]
    (let [code   (name code)
-         value  (gobj/getValueByKeys translations code locale)]
+         value  (gobj/getValueByKeys translations locale code)]
      (if (empty-string? value)
-       (if (= cfg/default-language locale)
+       (if (= cf/default-language locale)
          code
-         (apply t cfg/default-language code args))
+         (apply t cf/default-language code args))
        (let [plural (first (filter c? args))
              value  (if (array? value)
                       (if (= @plural 1) (aget value 0) (aget value 1))
@@ -159,8 +194,8 @@
          (apply str/fmt value (map #(if (c? %) @% %) args)))))))
 
 (defn tr
-  ([code] (t @locale code))
-  ([code & args] (apply t @locale code args)))
+  ([code] (t *current-locale* code))
+  ([code & args] (apply t *current-locale* code args)))
 
 (mf/defc tr-html*
   {::mf/props :obj}
@@ -173,5 +208,5 @@
 ;; DEPRECATED
 (defn use-locale
   []
-  (mf/deref locale))
+  (mf/deref state))
 
