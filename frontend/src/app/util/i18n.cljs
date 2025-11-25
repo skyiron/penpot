@@ -24,12 +24,8 @@
 (log/set-level! :info)
 
 (def supported-locales
-  [{:label "English"
-    :value "en"
-    :load-fn #(mod/import "./translation.en.js")}
-   {:label "Español"
-    :value "es"
-    :load-fn #(mod/import "./translation.es.js")}
+  [{:label "English" :value "en"}
+   {:label "Español" :value "es"}
    {:label "Català" :value "ca"}
    {:label "Deutsch (community)" :value "de"}
    {:label "Dutch (community)" :value "nl"}
@@ -61,11 +57,6 @@
    {:label "简体中文 (community)" :value "zh_cn"}
    {:label "繁體中文 (community)" :value "zh_hant"}])
 
-(def ^:private load-fn-map
-  (d/index-by :value :load-fn supported-locales))
-
-(def ^:dynamic *current-locale* nil)
-
 (defn- parse-locale
   [locale]
   (let [locale (-> (str/lower locale)
@@ -79,6 +70,12 @@
     (-> (.-language globals/navigator)
         (parse-locale))))
 
+
+;; Set initial translation loading state as globaly stored variable;
+;; this facilitates hot reloading
+(when-not (exists? (unchecked-get globals/global "translations"))
+  (unchecked-set globals/global "translations" #js {}))
+
 (defn- autodetect
   []
   (let [supported (into #{} (map :value supported-locales))]
@@ -89,44 +86,52 @@
           (recur (rest locales)))
         cf/default-language))))
 
-(defonce translations #js {})
-(defonce state (l/atom #(-> {:render 0 :locale cf/default-language})))
+(defn get-current
+  "Get the currently memoized locale or execute the autodetection"
+  []
+  (or (get storage/global ::locale) (autodetect)))
 
-(add-watch state "common.time"
-           (fn [_ _ pv cv]
-             (let [pv (get pv :locale)
-                   cv (get cv :locale)]
-               (when (not= pv cv)
-                 (ct/set-default-locale! cv)))))
+(def ^:dynamic *current-locale*
+  (get-current))
 
-(defn- mark-locale-loaded
-  [state locale data]
+(defonce state
+  (l/atom {:render 0 :locale *current-locale*}))
+
+(defn- assign-current-locale
+  [state locale]
   (-> state
       (update :render inc)
-      (update :translations assoc locale data)
       (assoc :locale locale)))
+
+(defn- get-translations
+  "Get globaly stored mutable object with all loaded translations"
+  []
+  (unchecked-get globals/global "penpotTranslations"))
+
+(defn set-translations
+  "A helper for synchronously set translations data for specified locale"
+  [locale data]
+  (let [translations (unchecked-get globals/global "penpotTranslations")]
+    (unchecked-set translations locale data)
+    nil))
 
 (defn- load
   [locale]
-  (if (obj/contains? translations locale)
-    (p/resolved true)
-    (if-let [load-fn (get load-fn-map locale)]
-      (->> (load-fn)
-           (p/fmap (fn [result] (unchecked-get result "default")))
-           (p/fnly (fn [result _cause]
-                     (unchecked-set translations locale result)
-                     (swap! state mark-locale-loaded locale result)))
-           (p/fmap (constantly true)))
-      (p/resolved false))))
+  (let [path (str "./translation." locale ".js")]
+    (->> (mod/import path)
+         (p/fmap (fn [result] (unchecked-get result "default")))
+         (p/fnly (fn [data cause]
+                   (if cause
+                     (js/console.error "unexpected error on fetching locale" cause)
+                     (do
+                       (set! *current-locale* locale)
+                       (set-translations locale data)
+                       (swap! state assign-current-locale locale))))))))
 
 (defn init
   "Initialize the i18n module"
   []
-  (let [current-locale (or (get storage/global ::locale) (autodetect))]
-    (set! *current-locale* current-locale)
-    (reset! state {:locale current-locale :render 0})
-    (prn "INIT" current-locale)
-    (load current-locale)))
+  (load *current-locale*))
 
 (defn set-locale
   [lname]
@@ -141,12 +146,7 @@
                         (recur (rest locales)))
                       cf/default-language))))]
 
-    (->> (load lname)
-         (p/fmap (fn [o]
-                   (set! *current-locale* lname)
-                   (swap! storage/global assoc ::locale lname)
-                   (swap! state assoc :locale lname)
-                   o)))))
+    (load lname)))
 
 (deftype C [val]
   IDeref
@@ -171,7 +171,8 @@
 
 (defn t
   ([locale code]
-   (let [code  (name code)
+   (let [translations (unchecked-get globals/global "translations")
+         code  (d/name code)
          value (gobj/getValueByKeys translations locale code)]
      (if (empty-string? value)
        (if (= cf/default-language locale)
@@ -181,7 +182,8 @@
          (aget value 0)
          value))))
   ([locale code & args]
-   (let [code   (name code)
+   (let [translations (unchecked-get globals/global "translations")
+         code   (d/name code)
          value  (gobj/getValueByKeys translations locale code)]
      (if (empty-string? value)
        (if (= cf/default-language locale)
@@ -205,8 +207,12 @@
                   :className class
                   :on-click on-click}]))
 
-;; DEPRECATED
-(defn use-locale
-  []
-  (mf/deref state))
+(add-watch state "common.time"
+           (fn [_ _ pv cv]
+             (let [pv (get pv :locale)
+                   cv (get cv :locale)]
+               (when (not= pv cv)
+                 (ct/set-default-locale! cv)))))
+
+
 

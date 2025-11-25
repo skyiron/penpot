@@ -43,8 +43,6 @@
    [app.util.i18n :as i18n]
    [rumext.v2 :as mf]))
 
-(i18n/init! cf/translations)
-
 (def default
   "A export used for storybook"
   (mf/object
@@ -78,6 +76,9 @@
     :Milestone milestone*
     :MilestoneGroup milestone-group*
     :Date date*
+
+    :set-default-translations i18n/set-translations
+
     ;; meta / misc
     :meta
     {:icons (clj->js (sort icon-list))
