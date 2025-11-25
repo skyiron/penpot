@@ -50,6 +50,7 @@
         field  (or (first in)
                    (:error/field props))]
 
+    (prn "interpret-schema-problem" field)
     (if (contains? acc field)
       acc
       (cond
@@ -116,13 +117,20 @@
     (let [state   (apply f args)
           cleaned (sm/decode schema (:data state) sm/json-transformer)
           valid?  (sm/validate schema cleaned)
-          errors  (when-not valid?
-                    (collect-schema-errors schema validators state))]
+
+          errors
+          (when-not valid?
+            (collect-schema-errors schema validators state))
+
+          extra-errors
+          (not-empty (:extra-errors state))]
 
       (assoc state
              :errors errors
              :clean-data (when valid? cleaned)
-             :valid (and (not errors) valid?)))))
+             :valid (and (not errors)
+                         (not extra-errors)
+                         valid?)))))
 
 (defn- create-form-mutator
   [internal-state rerender-fn wrap-update-fn initial opts]
@@ -191,11 +199,16 @@
   ([form field value]
    (on-input-change form field value false))
   ([form field value trim?]
-   (swap! form (fn [state]
-                 (-> state
-                     (assoc-in [:touched field] true)
-                     (assoc-in [:data field] (if trim? (str/trim value) value))
-                     (update :errors dissoc field))))))
+   (letfn [(clean-errors [errors]
+             (-> errors
+                 (dissoc field)
+                 (not-empty)))]
+     (swap! form (fn [state]
+                   (-> state
+                       (assoc-in [:touched field] true)
+                       (assoc-in [:data field] (if trim? (str/trim value) value))
+                       (update :errors clean-errors)
+                       (update :extra-errors clean-errors)))))))
 
 (defn on-style-change
   ([form field value]

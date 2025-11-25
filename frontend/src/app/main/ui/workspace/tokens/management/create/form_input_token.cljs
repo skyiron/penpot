@@ -46,10 +46,6 @@
   (let [form       (mf/use-ctx fc/context)
         input-name name
 
-        resolved-input-name
-        (mf/with-memo [input-name]
-          (keyword (str "resolved-" (c/name input-name))))
-
         touched?
         (and (contains? (:data @form) input-name)
              (get-in @form [:touched input-name]))
@@ -105,13 +101,10 @@
                                   (when touched?
                                     (if error
                                       (do
-                                        (swap! form assoc-in [:errors input-name] {:message error})
-                                        (swap! form assoc-in [:errors resolved-input-name] {:message error})
-                                        (swap! form update :data dissoc resolved-input-name)
+                                        (swap! form assoc-in [:extra-errors input-name] {:message error})
                                         (reset! hint* {:message error :type "error"}))
                                       (let [message (tr "workspace.tokens.resolved-value" value)]
-                                        (swap! form update :errors dissoc input-name resolved-input-name)
-                                        (swap! form update :data assoc resolved-input-name value)
+                                        (swap! form update :extra-errors dissoc input-name)
                                         (reset! hint* {:message message :type "hint"})))))))]
 
         (fn []
@@ -119,28 +112,26 @@
 
     [:> input* props]))
 
-(defn on-input-change
+(defn- on-composite-input-token-change
   ([form field value]
-   (on-input-change form field value false))
+   (on-composite-input-token-change form field value false))
   ([form field value trim?]
-   (swap! form (fn [state]
-                 (-> state
-                     (assoc-in [:touched :value field] true)
-                     (assoc-in [:data :value field] (if trim? (str/trim value) value))
-                     #_(update-in [:errors :value] dissoc field))))))
-
+   (letfn [(clean-errors [errors]
+             (-> errors
+                 (dissoc field)
+                 (not-empty)))]
+     (swap! form (fn [state]
+                   (-> state
+                       ;; (assoc-in [:touched :value field] true)
+                       (assoc-in [:data :value field] (if trim? (str/trim value) value))
+                       (update :errors clean-errors)
+                       (update :extra-errors clean-errors)))))))
 
 (mf/defc token-composite-value-input*
   [{:keys [name tokens token] :rest props}]
 
   (let [form       (mf/use-ctx fc/context)
         input-name name
-
-        touched? false
-        ;; ;; FIXME
-        ;; (and (contains? (get-in @form [:data :value])
-        ;;                 input-name)
-        ;;      (get-in @form [:touched :value input-name]))
 
         error
         (get-in @form [:errors :value input-name])
@@ -167,7 +158,7 @@
          (mf/deps resolve-stream input-name)
          (fn [event]
            (let [value (-> event dom/get-target dom/get-input-value)]
-             (on-input-change form input-name value true)
+             (on-composite-input-token-change form input-name value true)
              (rx/push! resolve-stream value))))
 
         props
@@ -181,7 +172,7 @@
                                   :hint-message (:message error)})
           props)]
 
-    (mf/with-effect [resolve-stream tokens token input-name touched?]
+    (mf/with-effect [resolve-stream tokens token input-name]
       (let [subs (->> resolve-stream
                       (rx/debounce 300)
                       (rx/mapcat (partial resolve-value tokens token))
@@ -195,24 +186,20 @@
                          (cond
                            (and error (str/empty? (:error/value error)))
                            (do
-                             (prn "AAAA" error)
                              (swap! form update-in [:errors :value] dissoc input-name)
-                             (swap! form update-in [:data :resolved-value] dissoc input-name)
+                             (swap! form update :extra-errors dissoc :value)
                              (reset! hint* {}))
 
 
                            (some? error)
                            (let [error' (:message error)]
-                             (prn "EEEE" error)
-                             (swap! form assoc-in  [:errors :value input-name] {:message error'})
-                             (swap! form assoc-in  [:errors :resolved-value input-name] {:message error'})
-                             ;; (swap! form update-in [:data :resolved-value] dissoc input-name)
+                             (swap! form assoc-in  [:extra-errors :value input-name] {:message error'})
                              (reset! hint* {:message error' :type "error"}))
 
                            :else
                            (let [message (tr "workspace.tokens.resolved-value" value)]
                              (swap! form update :errors dissoc :value)
-                             (swap! form update-in [:data :resolved-value] assoc input-name value)
+                             (swap! form update :extra-errors dissoc :value )
                              (reset! hint* {:message message :type "hint"}))))))]
         (fn []
           (rx/dispose! subs))))

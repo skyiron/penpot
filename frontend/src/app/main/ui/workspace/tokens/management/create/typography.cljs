@@ -27,7 +27,8 @@
    [app.main.ui.forms :as forms]
    [app.main.ui.workspace.tokens.management.create.combobox-token-fonts :refer [font-picker-combobox*]]
    [app.main.ui.workspace.tokens.management.create.form-input-token :refer [form-input-token*
-                                                                            form-input-token-composite*]]
+                                                                            token-composite-value-input*
+                                                                            ]]
    [app.util.dom :as dom]
    [app.util.forms :as fm]
    [app.util.i18n :refer [tr]]
@@ -102,7 +103,7 @@
       ;;    :token line-height-sub-token
       ;;    :tokens tokens}]]
       [:div {:class (stl/css :input-row)}
-       [:> form-input-token-composite*
+       [:> token-composite-value-input*
         {:aria-label "Letter Spacing"
          :icon i/text-letterspacing
          :placeholder (tr "workspace.tokens.letter-spacing-value-enter-composite")
@@ -110,7 +111,7 @@
          :token letter-spacing-sub-token
          :tokens tokens}]]
       [:div {:class (stl/css :input-row)}
-       [:> form-input-token-composite*
+       [:> token-composite-value-input*
         {:aria-label "Text Case"
          :icon i/text-mixed
          :placeholder (tr "workspace.tokens.text-case-value-enter")
@@ -151,13 +152,6 @@
         [:text-case {:optional true} :string]
         [:text-decoration {:optional true} :string]]
        ::sm/text]]
-
-     [:resolved-value
-      [:and
-       [:map-of :keyword :any]
-       [:fn {:error/fn (fn [] "kkkkk")}
-        (fn [attrs]
-          (pos? (count attrs)))]]]
 
      [:description {:optional true}
       [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
@@ -234,12 +228,6 @@
         (mf/with-memo [tokens-tree-in-selected-set]
           (make-reference-schema tokens-tree-in-selected-set))
 
-        ;; schema
-        ;; (mf/with-memo [tokens-tree-in-selected-set active-tab]
-        ;;   (if (= active-tab :reference)
-        ;;     (make-reference-schema tokens-tree-in-selected-set)
-        ;;     (make-composite-schema tokens-tree-in-selected-set)))
-
         composite-initial
         (mf/with-memo [token]
           (let [value (:value token)]
@@ -251,7 +239,6 @@
                      :letter-spacing (:letter-spacing value "")
                      :text-case (:text-case value "")
                      :text-decoration (:text-decoration value "")}
-             :resolved-value {}
              :description (:description token "")}))
 
         reference-initial
@@ -259,25 +246,6 @@
           {:name (:name token "")
            :reference (:value token "")
            :description (:description token "")})
-
-        ;; initial
-        ;; (mf/with-memo [token active-tab]
-        ;;   (let [value (:value token)]
-        ;;     (if (= active-tab :reference)
-        ;;       {:name (:name token "")
-        ;;        :reference value
-        ;;        :description (:description token "")}
-
-        ;;       {:name (:name token "")
-        ;;        :font-family (:font-family value "")
-        ;;        :font-size (:font-size value "")
-        ;;        :font-weight (:font-weight value "")
-        ;;        :line-height (:line-height value "")
-        ;;        :letter-spacing (:letter-spacing value "")
-        ;;        :text-case (:text-case value "")
-        ;;        :text-decoration (:text-decoration value "")
-        ;;        :description (:description token "")})))
-
 
         composite-form
         (fm/use-form :schema composite-schema
@@ -291,10 +259,6 @@
         (if (= active-tab :reference)
           reference-form
           composite-form)
-
-        ;; form
-        ;; (fm/use-form :schema schema
-        ;;              :initial initial)
 
         warning-name-change?
         (or (not= (get-in @form [:data :name])
@@ -366,8 +330,8 @@
                       (dwtp/propagate-workspace-tokens)
                       (modal/hide))))))))
 
-        ;; _ (prn @form)
-        _ (app.common.pprint/pprint @form)
+        _ (prn "form" @form)
+        ;; _ (app.common.pprint/pprint @form)
         ]
 
     [:> forms/form* {:class (stl/css :form-wrapper)
