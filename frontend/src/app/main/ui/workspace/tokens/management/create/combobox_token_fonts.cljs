@@ -139,7 +139,7 @@
                                   :hint-message (:message error)})
           props)]
 
-    (mf/with-effect [resolve-stream tokens token input-name]
+    (mf/with-effect [resolve-stream tokens token input-name touched?]
       (let [subs (->> resolve-stream
                       (rx/debounce 300)
                       (rx/mapcat (partial resolve-value tokens token))
@@ -148,16 +148,17 @@
                                                (fn [error]
                                                  ((:error/fn error) (:error/value error))))))
                       (rx/subs! (fn [{:keys [error value]}]
-                                  (if error
-                                    (do
-                                      (swap! form assoc-in [:errors input-name] {:message error})
-                                      (swap! form assoc-in [:errors resolved-input-name] {:message error})
-                                      (swap! form update :data dissoc resolved-input-name)
-                                      (reset! hint* {:message error :type "error"}))
-                                    (let [message (tr "workspace.tokens.resolved-value" value)]
-                                      (swap! form update :errors dissoc input-name resolved-input-name)
-                                      (swap! form update :data assoc resolved-input-name value)
-                                      (reset! hint* {:message message :type "hint"}))))))]
+                                  (when touched?
+                                    (if error
+                                      (do
+                                        (swap! form assoc-in [:errors input-name] {:message error})
+                                        (swap! form assoc-in [:errors resolved-input-name] {:message error})
+                                        (swap! form update :data dissoc resolved-input-name)
+                                        (reset! hint* {:message error :type "error"}))
+                                      (let [message (tr "workspace.tokens.resolved-value" value)]
+                                        (swap! form update :errors dissoc input-name resolved-input-name)
+                                        (swap! form update :data assoc resolved-input-name value)
+                                        (reset! hint* {:message message :type "hint"})))))))]
 
         (fn []
           (rx/dispose! subs))))

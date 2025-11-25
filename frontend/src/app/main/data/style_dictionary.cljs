@@ -456,7 +456,6 @@
   `sd-token` will keep the missing references in the `value` (E.g \"{missing} + {existing}\" -> \"{missing} + 12px\")
   So we parse out the missing references and add them to `:errors` in the final token."
   [sd-tokens get-origin-token]
-  (.log js/console "procesion" sd-tokens)
   (reduce
    (fn [acc ^js sd-token]
      (let [origin-token (get-origin-token sd-token)
@@ -511,7 +510,6 @@
                      (.buildAllPlatforms platform)
                      (p/then #(.getPlatformTokens ^js % platform))
                      (p/then #(.-allTokens ^js %)))]
-      (.log js/console "Building Style Dictionary with config:" config')
       (rx/from build+))))
 
 (defn resolve-tokens-tree

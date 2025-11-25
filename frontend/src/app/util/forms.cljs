@@ -197,6 +197,21 @@
                      (assoc-in [:data field] (if trim? (str/trim value) value))
                      (update :errors dissoc field))))))
 
+(defn on-style-change
+  ([form field value]
+   (on-style-change form field value false))
+  ([form field value trim?]
+   (swap! form
+          (fn [state]
+            (let [v (if trim? (str/trim value) value)]
+              (-> state
+                  (assoc-in [:touched field] true)
+                  (assoc-in [:data field] v)
+                  (update-in [:data :value]
+                             (fnil assoc {})
+                             field v)
+                  (update :errors dissoc field)))))))
+
 (defn update-input-value!
   [form field value]
   (swap! form (fn [state]
