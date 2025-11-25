@@ -114,7 +114,7 @@
   [f {:keys [schema validators]}]
   (fn [& args]
     (let [state   (apply f args)
-          cleaned (sm/decode schema (:data state) sm/string-transformer)
+          cleaned (sm/decode schema (:data state) sm/json-transformer)
           valid?  (sm/validate schema cleaned)
           errors  (when-not valid?
                     (collect-schema-errors schema validators state))]

@@ -24,9 +24,10 @@
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.main.ui.ds.foundations.typography.heading :refer [heading*]]
    [app.main.ui.ds.notifications.context-notification :refer [context-notification*]]
-   [app.main.ui.forms :as fc]
+   [app.main.ui.forms :as forms]
    [app.main.ui.workspace.tokens.management.create.combobox-token-fonts :refer [font-picker-combobox*]]
-   [app.main.ui.workspace.tokens.management.create.form-input-token :refer [form-input-token*]]
+   [app.main.ui.workspace.tokens.management.create.form-input-token :refer [form-input-token*
+                                                                            form-input-token-composite*]]
    [app.util.dom :as dom]
    [app.util.forms :as fm]
    [app.util.i18n :refer [tr]]
@@ -34,33 +35,6 @@
    [beicon.v2.core :as rx]
    [cuerdas.core :as str]
    [rumext.v2 :as mf]))
-
-(defn- make-composite-schema
-  [tokens-tree]
-  (sm/schema
-   [:and
-    [:map
-     [:name
-      [:and
-       [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
-       (sm/update-properties cto/token-name-ref assoc :error/fn #(str (:value %) (tr "workspace.tokens.token-name-validation-error")))
-       [:fn {:error/fn #(tr "workspace.tokens.token-name-duplication-validation-error" (:value %))}
-        #(not (cft/token-name-path-exists? % tokens-tree))]]]
-     [:font-family {:optional true} ::sm/text]
-     [:font-size {:optional true} ::sm/text]
-     [:font-weight {:optional true} ::sm/text]
-     [:line-height {:optional true} ::sm/text]
-     [:letter-spacing {:optional true} ::sm/text]
-     [:text-case {:optional true} ::sm/text]
-     [:text-decoration {:optional true} ::sm/text]
-     [:description {:optional true}
-      [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
-
-;; TODO: Añadir tradu
-    [:fn {:error/fn (fn [_] "At least one composite field must be set")
-          :error/field :font-family}
-     (fn [{:keys [font-size font-family font-weight line-height letter-spacing text-case text-decoration]}]
-       (some some? [font-size font-family font-weight line-height letter-spacing text-case text-decoration]))]]))
 
 (mf/defc composite-form*
   [{:keys [token tokens] :as props}]
@@ -94,71 +68,117 @@
         (mf/with-memo [token]
           {:type :text-decoration})]
 
-
     [:div {:class (stl/css :inputs-wrapper)}
      [:div {:class (stl/css :input-row)}
-      [:> font-picker-combobox*
-       {:icon i/text-font-family
-        :placeholder (tr "workspace.tokens.token-font-family-value-enter")
-        :aria-label  (tr "workspace.tokens.token-font-family-value")
-        :name :font-family
-        :token font-family-sub-token
-        :tokens tokens}]]
-     [:div {:class (stl/css :input-row)}
-      [:> form-input-token*
-       {:aria-label "Font Size"
-        :icon i/text-font-size
-        :placeholder (tr "workspace.tokens.font-size-value-enter")
-        :name :font-size
-        :token font-size-sub-token
-        :tokens tokens}]]
-     [:div {:class (stl/css :input-row)}
-      [:> form-input-token*
-       {:aria-label "Font Weight"
-        :icon i/text-font-weight
-        :placeholder (tr "workspace.tokens.font-weight-value-enter")
-        :name :font-weight
-        :token font-weight-sub-token
-        :tokens tokens}]]
-     [:div {:class (stl/css :input-row)}
-      [:> form-input-token*
-       {:aria-label "Line Height"
-        :icon i/text-lineheight
-        :placeholder (tr "workspace.tokens.line-height-value-enter")
-        :name :line-height
-        :token line-height-sub-token
-        :tokens tokens}]]
-     [:div {:class (stl/css :input-row)}
-      [:> form-input-token*
-       {:aria-label "Letter Spacing"
-        :icon i/text-letterspacing
-        :placeholder (tr "workspace.tokens.letter-spacing-value-enter-composite")
-        :name :letter-spacing
-        :token letter-spacing-sub-token
-        :tokens tokens}]]
-     [:div {:class (stl/css :input-row)}
-      [:> form-input-token*
-       {:aria-label "Text Case"
-        :icon i/text-mixed
-        :placeholder (tr "workspace.tokens.text-case-value-enter")
-        :name :text-case
-        :token text-case-sub-token
-        :tokens tokens}]]
-     [:div {:class (stl/css :input-row)}
-      [:> form-input-token*
-       {:aria-label "Text Decoration"
-        :icon i/text-underlined
-        :placeholder (tr "workspace.tokens.text-decoration-value-enter")
-        :name :text-decoration
-        :token text-decoration-sub-token
-        :tokens tokens}]]]))
+      ;;  [:> font-picker-combobox*
+      ;;   {:icon i/text-font-family
+      ;;    :placeholder (tr "workspace.tokens.token-font-family-value-enter")
+      ;;    :aria-label  (tr "workspace.tokens.token-font-family-value")
+      ;;    :name :font-family
+      ;;    :token font-family-sub-token
+      ;;    :tokens tokens}]]
+      ;; [:div {:class (stl/css :input-row)}
+      ;;  [:> form-input-token*
+      ;;   {:aria-label "Font Size"
+      ;;    :icon i/text-font-size
+      ;;    :placeholder (tr "workspace.tokens.font-size-value-enter")
+      ;;    :name :font-size
+      ;;    :token font-size-sub-token
+      ;;    :tokens tokens}]]
+      ;; [:div {:class (stl/css :input-row)}
+      ;;  [:> form-input-token*
+      ;;   {:aria-label "Font Weight"
+      ;;    :icon i/text-font-weight
+      ;;    :placeholder (tr "workspace.tokens.font-weight-value-enter")
+      ;;    :name :font-weight
+      ;;    :token font-weight-sub-token
+      ;;    :tokens tokens}]]
+      ;; [:div {:class (stl/css :input-row)}
+      ;;  [:> form-input-token*
+      ;;   {:aria-label "Line Height"
+      ;;    :icon i/text-lineheight
+      ;;    :placeholder (tr "workspace.tokens.line-height-value-enter")
+      ;;    :name :line-height
+      ;;    :token line-height-sub-token
+      ;;    :tokens tokens}]]
+      [:div {:class (stl/css :input-row)}
+       [:> form-input-token-composite*
+        {:aria-label "Letter Spacing"
+         :icon i/text-letterspacing
+         :placeholder (tr "workspace.tokens.letter-spacing-value-enter-composite")
+         :name :letter-spacing
+         :token letter-spacing-sub-token
+         :tokens tokens}]]
+      [:div {:class (stl/css :input-row)}
+       [:> form-input-token-composite*
+        {:aria-label "Text Case"
+         :icon i/text-mixed
+         :placeholder (tr "workspace.tokens.text-case-value-enter")
+         :name :text-case
+         :token text-case-sub-token
+         :tokens tokens}]]]]))
 
+      ;; #_[:div {:class (stl/css :input-row)}
+      ;;    [:> form-input-token*
+      ;;     {:aria-label "Text Decoration"
+      ;;      :icon i/text-underlined
+      ;;      :placeholder (tr "workspace.tokens.text-decoration-value-enter")
+      ;;      :name :text-decoration
+      ;;      :token text-decoration-sub-token
+      ;;      :tokens tokens}]]
+
+
+(defn- make-composite-schema
+  [tokens-tree]
+  (sm/schema
+   [:and
+    [:map
+     [:name
+      [:and
+       [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
+       (sm/update-properties cto/token-name-ref assoc :error/fn #(str (:value %) (tr "workspace.tokens.token-name-validation-error")))
+       [:fn {:error/fn #(tr "workspace.tokens.token-name-duplication-validation-error" (:value %))}
+        #(not (cft/token-name-path-exists? % tokens-tree))]]]
+
+     [:value
+      [:or
+       [:map
+        [:font-family {:optional true} :string]
+        [:font-size {:optional true} :string]
+        [:font-weight {:optional true} :string]
+        [:line-height {:optional true} :string]
+        [:letter-spacing {:optional true} :string]
+        [:text-case {:optional true} :string]
+        [:text-decoration {:optional true} :string]]
+       ::sm/text]]
+
+     [:resolved-value
+      [:and
+       [:map-of :keyword :any]
+       [:fn {:error/fn (fn [] "kkkkk")}
+        (fn [attrs]
+          (pos? (count attrs)))]]]
+
+     [:description {:optional true}
+      [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
+
+    ;; TODO: Añadir tradu
+    [:fn {:error/fn (fn [_] "At least one composite field must be set")
+          :error/field :value}
+     (fn [attrs]
+       (let [result (reduce-kv (fn [_ k v]
+                                 (if (str/empty? v)
+                                   false
+                                   (reduced true)))
+                               false
+                               (get attrs :value))]
+         result))]]))
 
 (defn- make-reference-schema
   [tokens-tree]
   (sm/schema
    [:and
-    [:map 
+    [:map
      [:name
       [:and
        [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
@@ -206,37 +226,81 @@
             (and (:name token) (:value token))
             (assoc (:name token) token)))
 
-        schema
-        (mf/with-memo [tokens-tree-in-selected-set active-tab]
-          (if (= active-tab :reference)
-            (make-reference-schema tokens-tree-in-selected-set)
-            (make-composite-schema tokens-tree-in-selected-set)))
+        composite-schema
+        (mf/with-memo [tokens-tree-in-selected-set]
+          (make-composite-schema tokens-tree-in-selected-set))
 
-        initial
-        (mf/with-memo [token active-tab]
+        reference-schema
+        (mf/with-memo [tokens-tree-in-selected-set]
+          (make-reference-schema tokens-tree-in-selected-set))
+
+        ;; schema
+        ;; (mf/with-memo [tokens-tree-in-selected-set active-tab]
+        ;;   (if (= active-tab :reference)
+        ;;     (make-reference-schema tokens-tree-in-selected-set)
+        ;;     (make-composite-schema tokens-tree-in-selected-set)))
+
+        composite-initial
+        (mf/with-memo [token]
           (let [value (:value token)]
-            (if (= active-tab :reference)
-              {:name (:name token "")
-               :reference value
-               :description (:description token "")}
+            {:name (:name token "")
+             :value {:font-family (:font-family value "")
+                     :font-size (:font-size value "")
+                     :font-weight (:font-weight value "")
+                     :line-height (:line-height value "")
+                     :letter-spacing (:letter-spacing value "")
+                     :text-case (:text-case value "")
+                     :text-decoration (:text-decoration value "")}
+             :resolved-value {}
+             :description (:description token "")}))
 
-              {:name (:name token "")
-               :font-family (:font-family value "")
-               :font-size (:font-size value "")
-               :font-weight (:font-weight value "")
-               :line-height (:line-height value "")
-               :letter-spacing (:letter-spacing value "")
-               :text-case (:text-case value "")
-               :text-decoration (:text-decoration value "")
-               :description (:description token "")})))
+        reference-initial
+        (mf/with-memo [token]
+          {:name (:name token "")
+           :reference (:value token "")
+           :description (:description token "")})
+
+        ;; initial
+        ;; (mf/with-memo [token active-tab]
+        ;;   (let [value (:value token)]
+        ;;     (if (= active-tab :reference)
+        ;;       {:name (:name token "")
+        ;;        :reference value
+        ;;        :description (:description token "")}
+
+        ;;       {:name (:name token "")
+        ;;        :font-family (:font-family value "")
+        ;;        :font-size (:font-size value "")
+        ;;        :font-weight (:font-weight value "")
+        ;;        :line-height (:line-height value "")
+        ;;        :letter-spacing (:letter-spacing value "")
+        ;;        :text-case (:text-case value "")
+        ;;        :text-decoration (:text-decoration value "")
+        ;;        :description (:description token "")})))
+
+
+        composite-form
+        (fm/use-form :schema composite-schema
+                     :initial composite-initial)
+
+        reference-form
+        (fm/use-form :schema reference-schema
+                     :initial reference-initial)
 
         form
-        (fm/use-form :schema schema
-                     :initial initial)
+        (if (= active-tab :reference)
+          reference-form
+          composite-form)
+
+        ;; form
+        ;; (fm/use-form :schema schema
+        ;;              :initial initial)
 
         warning-name-change?
-        (not= (get-in @form [:data :name])
-              (:name initial))
+        (or (not= (get-in @form [:data :name])
+                  (:name composite-initial))
+            (not= (get-in @form [:data :name])
+                  (:name reference-initial)))
 
         on-toggle-tab
         (mf/use-fn
@@ -302,24 +366,26 @@
                       (dwtp/propagate-workspace-tokens)
                       (modal/hide))))))))
 
-        _ (prn @form)]
+        ;; _ (prn @form)
+        _ (app.common.pprint/pprint @form)
+        ]
 
-    [:> fc/form* {:class (stl/css :form-wrapper)
-                  :form form
-                  :on-submit on-submit}
+    [:> forms/form* {:class (stl/css :form-wrapper)
+                     :form form
+                     :on-submit on-submit}
      [:div {:class (stl/css :token-rows)}
 
       [:> heading* {:level 2 :typography "headline-medium" :class (stl/css :form-modal-title)}
        (tr "workspace.tokens.create-token" token-type)]
 
       [:div {:class (stl/css :input-row)}
-       [:> fc/form-input* {:id "token-name"
-                           :name :name
-                           :label (tr "workspace.tokens.token-name")
-                           :placeholder (tr "workspace.tokens.enter-token-name" token-title)
-                           :max-length max-input-length
-                           :variant "comfortable"
-                           :auto-focus true}]
+       [:> forms/form-input* {:id "token-name"
+                              :name :name
+                              :label (tr "workspace.tokens.token-name")
+                              :placeholder (tr "workspace.tokens.enter-token-name" token-title)
+                              :max-length max-input-length
+                              :variant "comfortable"
+                              :auto-focus true}]
 
        (when (and warning-name-change? (= action "edit"))
          [:div {:class (stl/css :warning-name-change-notification-wrapper)}
@@ -354,13 +420,13 @@
            :tokens tokens}]])
 
       [:div {:class (stl/css :input-row)}
-       [:> fc/form-input* {:id "token-description"
-                           :name :description
-                           :label (tr "workspace.tokens.token-description")
-                           :placeholder (tr "workspace.tokens.token-description")
-                           :max-length max-input-length
-                           :variant "comfortable"
-                           :is-optional true}]]
+       [:> forms/form-input* {:id "token-description"
+                              :name :description
+                              :label (tr "workspace.tokens.token-description")
+                              :placeholder (tr "workspace.tokens.token-description")
+                              :max-length max-input-length
+                              :variant "comfortable"
+                              :is-optional true}]]
 
       [:div {:class (stl/css-case :button-row true
                                   :with-delete (= action "edit"))}
@@ -380,6 +446,6 @@
                     :variant "secondary"}
         (tr "labels.cancel")]
 
-       [:> fc/form-submit* {:variant "primary"
-                            :on-submit on-submit}
+       [:> forms/form-submit* {:variant "primary"
+                               :on-submit on-submit}
         (tr "labels.save")]]]]))
