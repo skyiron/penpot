@@ -821,8 +821,10 @@
               (-> fonts
                   (cond-> ^boolean emoji? (f/add-emoji-font))
                   (f/add-noto-fonts langs))
+              fallback-fonts (filter #(get % :is-fallback) updated-fonts)
               result (f/store-fonts shape-id updated-fonts)]
 
+          (f/load-fallback-fonts-for-editor! fallback-fonts)
           (h/call wasm/internal-module "_update_shape_text_layout")
 
           result)))))
