@@ -142,16 +142,15 @@
         #(not (cft/token-name-path-exists? % tokens-tree))]]]
 
      [:value
-      [:or
-       [:map
-        [:font-family {:optional true} :string]
-        [:font-size {:optional true} :string]
-        [:font-weight {:optional true} :string]
-        [:line-height {:optional true} :string]
-        [:letter-spacing {:optional true} :string]
-        [:text-case {:optional true} :string]
-        [:text-decoration {:optional true} :string]]
-       ::sm/text]]
+      [:map
+       [:font-family {:optional true} :string]
+       [:font-size {:optional true} :string]
+       [:font-weight {:optional true} :string]
+       [:line-height {:optional true} :string]
+       [:letter-spacing {:optional true} :string]
+       [:text-case {:optional true} :string]
+       [:text-decoration {:optional true} :string]
+       [:reference {:optional true} :string]]]
 
      [:description {:optional true}
       [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
@@ -220,51 +219,51 @@
             (and (:name token) (:value token))
             (assoc (:name token) token)))
 
-        composite-schema
+        schema
         (mf/with-memo [tokens-tree-in-selected-set]
           (make-composite-schema tokens-tree-in-selected-set))
 
-        reference-schema
-        (mf/with-memo [tokens-tree-in-selected-set]
-          (make-reference-schema tokens-tree-in-selected-set))
+        ;; reference-schema
+        ;; (mf/with-memo [tokens-tree-in-selected-set]
+        ;;   (make-reference-schema tokens-tree-in-selected-set))
 
-        composite-initial
+        initial
         (mf/with-memo [token]
           (let [value (:value token)]
-            {:name (:name token "")
-             :value {:font-family (:font-family value "")
-                     :font-size (:font-size value "")
-                     :font-weight (:font-weight value "")
-                     :line-height (:line-height value "")
-                     :letter-spacing (:letter-spacing value "")
-                     :text-case (:text-case value "")
-                     :text-decoration (:text-decoration value "")}
+            {:name  (:name token "")
+             :value (if (string? value)
+                      {:reference value}
+                      {:font-family (:font-family value "")
+                       :font-size (:font-size value "")
+                       :font-weight (:font-weight value "")
+                       :line-height (:line-height value "")
+                       :letter-spacing (:letter-spacing value "")
+                       :text-case (:text-case value "")
+                       :text-decoration (:text-decoration value "")})
              :description (:description token "")}))
 
-        reference-initial
-        (mf/with-memo [token]
-          {:name (:name token "")
-           :reference (:value token "")
-           :description (:description token "")})
-
-        composite-form
-        (fm/use-form :schema composite-schema
-                     :initial composite-initial)
-
-        reference-form
-        (fm/use-form :schema reference-schema
-                     :initial reference-initial)
+        ;; reference-initial
+        ;; (mf/with-memo [token]
+        ;;   {:name (:name token "")
+        ;;    :reference (:value token "")
+        ;;    :description (:description token "")})
 
         form
-        (if (= active-tab :reference)
-          reference-form
-          composite-form)
+        (fm/use-form :schema schema
+                     :initial initial)
+
+        ;; reference-form
+        ;; (fm/use-form :schema reference-schema
+        ;;              :initial reference-initial)
+
+        ;; form
+        ;; (if (= active-tab :reference)
+        ;;   reference-form
+        ;;   composite-form)
 
         warning-name-change?
-        (or (not= (get-in @form [:data :name])
-                  (:name composite-initial))
-            (not= (get-in @form [:data :name])
-                  (:name reference-initial)))
+        (not= (get-in @form [:data :name])
+              (:name initial))
 
         on-toggle-tab
         (mf/use-fn
@@ -300,7 +299,6 @@
          (fn [e]
            (when (or (k/enter? e) (k/space? e))
              (on-cancel e))))
-
 
         on-submit
         (mf/use-fn
@@ -375,7 +373,7 @@
                              :tokens tokens}]
 
         [:div {:class (stl/css :input-row)}
-         [:> form-input-token*
+         [:> token-composite-value-input*
           {:placeholder (tr "workspace.tokens.reference-composite")
            :aria-label (tr "labels.reference")
            :icon i/text-typography
