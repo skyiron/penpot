@@ -48,9 +48,12 @@
   (let [props  (m/properties schema)
         tprops (m/type-properties schema)
         field  (or (first in)
-                   (:error/field props))]
+                   (:error/field props))
 
-    (prn "interpret-schema-problem" field)
+        field  (if (vector? field)
+                 field
+                 [field])]
+
     (if (contains? acc field)
       acc
       (cond
@@ -59,30 +62,30 @@
 
         (or (= type :malli.core/missing-key)
             (nil? value))
-        (assoc acc field {:message (tr "errors.field-missing")})
+        (assoc-in acc field {:message (tr "errors.field-missing")})
 
         ;; --- CHECK on schema props
         (contains? props :error/fn)
-        (assoc acc field (handle-error-fn props problem))
+        (assoc-in acc field (handle-error-fn props problem))
 
         (contains? props :error/message)
-        (assoc acc field (handle-error-message props))
+        (assoc-in acc field (handle-error-message props))
 
         (contains? props :error/code)
-        (assoc acc field (handle-error-code props))
+        (assoc-in acc field (handle-error-code props))
 
         ;; --- CHECK on type props
         (contains? tprops :error/fn)
-        (assoc acc field (handle-error-fn tprops problem))
+        (assoc-in acc field (handle-error-fn tprops problem))
 
         (contains? tprops :error/message)
-        (assoc acc field (handle-error-message tprops))
+        (assoc-in acc field (handle-error-message tprops))
 
         (contains? tprops :error/code)
-        (assoc acc field (handle-error-code tprops))
+        (assoc-in acc field (handle-error-code tprops))
 
         :else
-        (assoc acc field {:message (tr "errors.invalid-data")})))))
+        (assoc-in acc field {:message (tr "errors.invalid-data")})))))
 
 (defn- use-rerender-fn
   []
@@ -113,7 +116,6 @@
 
 (defn- wrap-update-schema-fn
   [f {:keys [schema validators]}]
-  (prn "AAAA" schema)
   (fn [& args]
     (let [state   (apply f args)
           cleaned (sm/decode schema (:data state) sm/json-transformer)
@@ -181,21 +183,13 @@
         internal-state
         (mf/use-ref nil)
 
-        ;; opts-ref
-        ;; (mf/use-ref opts)
-
         form-mutator
         (mf/with-memo [initial schema validators]
           (let [mutator (create-form-mutator internal-state rerender-fn wrap-update-schema-fn
                                              initial
                                              (select-keys opts [:schema :validators]))]
-            (prn "RRRRRRR" schema)
             (swap! mutator identity)
             mutator))]
-
-    ;; (mf/with-effect [opts]
-    ;;   (prn "use-form" "opts" opts)
-    ;;   (mf/set-ref-val! opts-ref opts))
 
     (mf/with-effect [initial]
       (mf/set-ref-val! internal-state initial))

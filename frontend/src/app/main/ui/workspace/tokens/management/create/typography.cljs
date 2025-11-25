@@ -42,11 +42,17 @@
   ;; TODO: Añadir valores on edit
   (let [letter-spacing-sub-token
         (mf/with-memo [token]
-          {:type :letter-spacing})
+          (if-let [value (get token :value)]
+            {:type :letter-spacing
+             :value (get-in token [:value :font-spacing])}
+            {:type :letter-spacing}))
 
         font-family-sub-token
         (mf/with-memo [token]
-          {:type :font-family})
+          (if-let [value (get token :value)]
+            {:type :font-family
+             :value (get-in token [:value :font-family])}
+            {:type :font-family}))
 
         font-size-sub-token
         (mf/with-memo [token]
@@ -136,26 +142,36 @@
     [:map
      [:name
       [:and
-       [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
-       (sm/update-properties cto/token-name-ref assoc :error/fn #(str (:value %) (tr "workspace.tokens.token-name-validation-error")))
+       [:string {:min 1 :max 255
+                 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
+       (sm/update-properties cto/token-name-ref assoc
+                             :error/fn #(str (:value %) (tr "workspace.tokens.token-name-validation-error")))
        [:fn {:error/fn #(tr "workspace.tokens.token-name-duplication-validation-error" (:value %))}
         #(not (cft/token-name-path-exists? % tokens-tree))]]]
 
      [:value
       [:map
-       [:font-family {:optional true} :string]
-       [:font-size {:optional true} :string]
-       [:font-weight {:optional true} :string]
-       [:line-height {:optional true} :string]
-       [:letter-spacing {:optional true} :string]
-       [:text-case {:optional true} :string]
-       [:text-decoration {:optional true} :string]
+       [:font-family {:optional true} [:maybe :string]]
+       [:font-size {:optional true} [:maybe :string]]
+       [:font-weight {:optional true} [:maybe :string]]
+       [:line-height {:optional true} [:maybe :string]]
+       [:letter-spacing {:optional true} [:maybe :string]]
+       [:text-case {:optional true} [:maybe :string]]
+       [:text-decoration {:optional true} [:maybe :string]]
        (if (= active-tab :reference)
          [:reference {:optional false} ::sm/text]
-         [:reference {:optional true} :string])]]
+         [:reference {:optional true} [:maybe :string]])]]
 
      [:description {:optional true}
       [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
+
+    [:fn {:error/field [:value :reference]
+          :error/fn #(tr "workspace.tokens.self-reference")}
+     (fn [{:keys [name value]}]
+       (let [reference (get value :reference)]
+         (if (and reference name)
+           (not (cto/token-value-self-reference? name reference))
+           true)))]
 
     ;; TODO: Añadir tradu
     [:fn {:error/fn (fn [_] "At least one composite field must be set")
@@ -168,28 +184,6 @@
                                false
                                (get attrs :value))]
          result))]]))
-
-(defn- make-reference-schema
-  [tokens-tree]
-  (sm/schema
-   [:and
-    [:map
-     [:name
-      [:and
-       [:string {:min 1 :max 255 :error/fn #(str (:value %) (tr "workspace.tokens.token-name-length-validation-error"))}]
-       (sm/update-properties cto/token-name-ref assoc :error/fn #(str (:value %) (tr "workspace.tokens.token-name-validation-error")))
-       [:fn {:error/fn #(tr "workspace.tokens.token-name-duplication-validation-error" (:value %))}
-        #(not (cft/token-name-path-exists? % tokens-tree))]]]
-     [:reference ::sm/text]
-     [:resolved-value ::sm/any]
-     [:description {:optional true}
-      [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
-
-    [:fn {:error/field :reference
-          :error/fn #(tr "workspace.tokens.self-reference")}
-     (fn [{:keys [name reference]}]
-       (when (and name reference)
-         (nil? (cto/token-value-self-reference? name reference))))]]))
 
 (mf/defc form*
   [{:keys [token validate-token action is-create selected-token-set-id tokens-tree-in-selected-set] :as props}]
@@ -225,43 +219,25 @@
         (mf/with-memo [tokens-tree-in-selected-set active-tab]
           (make-schema tokens-tree-in-selected-set active-tab))
 
-        ;; reference-schema
-        ;; (mf/with-memo [tokens-tree-in-selected-set]
-        ;;   (make-reference-schema tokens-tree-in-selected-set))
-
         initial
         (mf/with-memo [token]
           (let [value (:value token)]
             {:name  (:name token "")
              :value (if (string? value)
                       {:reference value}
-                      {:font-family (:font-family value "")
-                       :font-size (:font-size value "")
-                       :font-weight (:font-weight value "")
-                       :line-height (:line-height value "")
-                       :letter-spacing (:letter-spacing value "")
-                       :text-case (:text-case value "")
-                       :text-decoration (:text-decoration value "")})
+                      (select-keys value
+                                   [:font-family
+                                    :font-size
+                                    :font-weight
+                                    :line-height
+                                    :letter-spacing
+                                    :text-case
+                                    :text-decoration]))
              :description (:description token "")}))
-
-        ;; reference-initial
-        ;; (mf/with-memo [token]
-        ;;   {:name (:name token "")
-        ;;    :reference (:value token "")
-        ;;    :description (:description token "")})
 
         form
         (fm/use-form :schema schema
                      :initial initial)
-
-        ;; reference-form
-        ;; (fm/use-form :schema reference-schema
-        ;;              :initial reference-initial)
-
-        ;; form
-        ;; (if (= active-tab :reference)
-        ;;   reference-form
-        ;;   composite-form)
 
         warning-name-change?
         (not= (get-in @form [:data :name])
@@ -309,7 +285,10 @@
            (let [name (get-in @form [:clean-data :name])
                  description (get-in @form [:clean-data :description])
                  value       (get-in @form [:clean-data :value])]
-             (->> (validate-token {:token-value value
+
+             (->> (validate-token {:token-value (if (contains? value :reference)
+                                                  (get value :reference)
+                                                  value)
                                    :token-name name
                                    :token-description description
                                    :prev-token token
@@ -333,6 +312,8 @@
         _ (prn "form" @form)
         ;; _ (app.common.pprint/pprint @form)
         ]
+
+    (prn "FORM" initial)
 
     [:> forms/form* {:class (stl/css :form-wrapper)
                      :form form

@@ -28,7 +28,8 @@
         tokens
         (-> tokens
             ;; Remove previous token when renaming a token
-            (dissoc (:name prev-token))
+            ;; FIXME: revisit
+            ;; (dissoc (:name prev-token))
             (update (:name token) #(ctob/make-token (merge % prev-token token))))]
 
     (->> tokens
@@ -187,6 +188,7 @@
                            (and error (str/empty? (:error/value error)))
                            (do
                              (swap! form update-in [:errors :value] dissoc input-name)
+                             (swap! form update-in [:data :value] dissoc input-name)
                              (swap! form update :extra-errors dissoc :value)
                              (reset! hint* {}))
 
