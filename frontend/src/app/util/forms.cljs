@@ -113,6 +113,7 @@
 
 (defn- wrap-update-schema-fn
   [f {:keys [schema validators]}]
+  (prn "AAAA" schema)
   (fn [& args]
     (let [state   (apply f args)
           cleaned (sm/decode schema (:data state) sm/json-transformer)
@@ -134,8 +135,6 @@
 
 (defn- create-form-mutator
   [internal-state rerender-fn wrap-update-fn initial opts]
-  (mf/set-ref-val! internal-state initial)
-
   (reify
     IDeref
     (-deref [_]
@@ -170,7 +169,7 @@
         (rerender-fn)))))
 
 (defn use-form
-  [& {:keys [initial] :as opts}]
+  [& {:keys [initial schema validators] :as opts}]
   (let [rerender-fn (use-rerender-fn)
 
         initial
@@ -182,9 +181,24 @@
         internal-state
         (mf/use-ref nil)
 
+        ;; opts-ref
+        ;; (mf/use-ref opts)
+
         form-mutator
-        (mf/with-memo [initial]
-          (create-form-mutator internal-state rerender-fn wrap-update-schema-fn initial opts))]
+        (mf/with-memo [initial schema validators]
+          (let [mutator (create-form-mutator internal-state rerender-fn wrap-update-schema-fn
+                                             initial
+                                             (select-keys opts [:schema :validators]))]
+            (prn "RRRRRRR" schema)
+            (swap! mutator identity)
+            mutator))]
+
+    ;; (mf/with-effect [opts]
+    ;;   (prn "use-form" "opts" opts)
+    ;;   (mf/set-ref-val! opts-ref opts))
+
+    (mf/with-effect [initial]
+      (mf/set-ref-val! internal-state initial))
 
     ;; Initialize internal state once
     (mf/with-layout-effect []

@@ -129,8 +129,8 @@
       ;;      :tokens tokens}]]
 
 
-(defn- make-composite-schema
-  [tokens-tree]
+(defn- make-schema
+  [tokens-tree active-tab]
   (sm/schema
    [:and
     [:map
@@ -150,7 +150,9 @@
        [:letter-spacing {:optional true} :string]
        [:text-case {:optional true} :string]
        [:text-decoration {:optional true} :string]
-       [:reference {:optional true} :string]]]
+       (if (= active-tab :reference)
+         [:reference {:optional false} ::sm/text]
+         [:reference {:optional true} :string])]]
 
      [:description {:optional true}
       [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
@@ -220,8 +222,8 @@
             (assoc (:name token) token)))
 
         schema
-        (mf/with-memo [tokens-tree-in-selected-set]
-          (make-composite-schema tokens-tree-in-selected-set))
+        (mf/with-memo [tokens-tree-in-selected-set active-tab]
+          (make-schema tokens-tree-in-selected-set active-tab))
 
         ;; reference-schema
         ;; (mf/with-memo [tokens-tree-in-selected-set]
@@ -306,7 +308,7 @@
          (fn [form _event]
            (let [name (get-in @form [:clean-data :name])
                  description (get-in @form [:clean-data :description])
-                 value (get-in @form [:clean-data :value])]
+                 value       (get-in @form [:clean-data :value])]
              (->> (validate-token {:token-value value
                                    :token-name name
                                    :token-description description
