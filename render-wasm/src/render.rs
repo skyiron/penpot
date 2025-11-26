@@ -1567,7 +1567,10 @@ impl RenderState {
                             None,
                         );
 
-                        if !matches!(element.shape_type, Type::Bool(_)) {
+                        let allow_nested_shadow =
+                            !element.clip() && !matches!(element.shape_type, Type::Bool(_));
+
+                        if allow_nested_shadow {
                             // Nested shapes shadowing - apply black shadow to child shapes too
                             for shadow_shape_id in element.children.iter() {
                                 let shadow_shape = tree.get(shadow_shape_id).unwrap();
