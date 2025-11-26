@@ -38,12 +38,14 @@ const VIEWPORT_INTEREST_AREA_THRESHOLD: i32 = 1;
 const MAX_BLOCKING_TIME_MS: i32 = 32;
 const NODE_BATCH_THRESHOLD: i32 = 10;
 
+type ClipStack = Vec<(Rect, Option<Corners>, Matrix)>;
+
 pub struct NodeRenderState {
     pub id: Uuid,
     // We use this bool to keep that we've traversed all the children inside this node.
     visited_children: bool,
     // This is used to clip the content of frames.
-    clip_bounds: Option<(Rect, Option<Corners>, Matrix)>,
+    clip_bounds: Option<ClipStack>,
     // This is a flag to indicate that we've already drawn the mask of a masked group.
     visited_mask: bool,
     // This bool indicates that we're drawing the mask shape.
@@ -68,13 +70,26 @@ impl NodeRenderState {
     ///   the clipping region to compensate for coordinate system transformations.
     ///   This is useful for nested coordinate systems or when elements are grouped
     ///   and need relative positioning adjustments.
+    fn append_clip(
+        clip_stack: Option<ClipStack>,
+        clip: (Rect, Option<Corners>, Matrix),
+    ) -> Option<ClipStack> {
+        match clip_stack {
+            Some(mut stack) => {
+                stack.push(clip);
+                Some(stack)
+            }
+            None => Some(vec![clip]),
+        }
+    }
+
     pub fn get_children_clip_bounds(
         &self,
         element: &Shape,
         offset: Option<(f32, f32)>,
-    ) -> Option<(Rect, Option<Corners>, Matrix)> {
+    ) -> Option<ClipStack> {
         if self.id.is_nil() || !element.clip() {
-            return self.clip_bounds;
+            return self.clip_bounds.clone();
         }
 
         let mut bounds = element.selrect();
@@ -95,7 +110,7 @@ impl NodeRenderState {
             _ => None,
         };
 
-        Some((bounds, corners, transform))
+        Self::append_clip(self.clip_bounds.clone(), (bounds, corners, transform))
     }
 
     /// Calculates the clip bounds for shadow rendering of a given shape.
@@ -113,9 +128,9 @@ impl NodeRenderState {
         &self,
         element: &Shape,
         shadow: &Shadow,
-    ) -> Option<(Rect, Option<Corners>, Matrix)> {
+    ) -> Option<ClipStack> {
         if self.id.is_nil() {
-            return self.clip_bounds;
+            return self.clip_bounds.clone();
         }
 
         // Assert that the shape is either a Frame or Group
@@ -136,10 +151,70 @@ impl NodeRenderState {
                     _ => None,
                 };
 
-                Some((bounds, corners, transform))
+                Self::append_clip(self.clip_bounds.clone(), (bounds, corners, transform))
             }
-            _ => self.clip_bounds,
+            _ => self.clip_bounds.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shapes::{Frame, Shape, Type};
+
+    fn frame_with_selrect(x: f32, y: f32, w: f32, h: f32, clip: bool) -> Shape {
+        let mut shape = Shape::new(Uuid::new_v4());
+        shape.set_shape_type(Type::Frame(Frame::default()));
+        shape.selrect = Rect::from_xywh(x, y, w, h);
+        shape.clip_content = clip;
+        shape
+    }
+
+    #[test]
+    fn child_clip_keeps_parent_clip_stack() {
+        let parent_bounds = Rect::from_xywh(0.0, 0.0, 100.0, 100.0);
+        let parent_stack: ClipStack = vec![(parent_bounds, None, Matrix::default())];
+        let node_state = NodeRenderState {
+            id: Uuid::new_v4(),
+            visited_children: false,
+            clip_bounds: Some(parent_stack.clone()),
+            visited_mask: false,
+            mask: false,
+        };
+
+        let child = frame_with_selrect(10.0, 10.0, 50.0, 50.0, true);
+
+        let result = node_state
+            .get_children_clip_bounds(&child, None)
+            .expect("clip stack");
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].0, parent_stack[0].0);
+        assert_eq!(result[1].0, child.selrect());
+    }
+
+    #[test]
+    fn non_clipping_child_returns_parent_stack() {
+        let parent_bounds = Rect::from_xywh(0.0, 0.0, 100.0, 100.0);
+        let parent_stack: ClipStack = vec![(parent_bounds, None, Matrix::default())];
+        let node_state = NodeRenderState {
+            id: Uuid::new_v4(),
+            visited_children: false,
+            clip_bounds: Some(parent_stack.clone()),
+            visited_mask: false,
+            mask: false,
+        };
+
+        let mut child = frame_with_selrect(5.0, 5.0, 20.0, 20.0, true);
+        child.clip_content = false;
+
+        let result = node_state
+            .get_children_clip_bounds(&child, None)
+            .expect("clip stack");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, parent_stack[0].0);
     }
 }
 
@@ -554,7 +629,7 @@ impl RenderState {
     pub fn render_shape(
         &mut self,
         shape: &Shape,
-        clip_bounds: Option<(Rect, Option<Corners>, Matrix)>,
+        clip_bounds: Option<ClipStack>,
         fills_surface_id: SurfaceId,
         strokes_surface_id: SurfaceId,
         innershadows_surface_id: SurfaceId,
@@ -574,40 +649,42 @@ impl RenderState {
         let antialias = shape.should_use_antialias(self.get_scale());
 
         // set clipping
-        if let Some((bounds, corners, transform)) = clip_bounds {
-            self.surfaces.apply_mut(surface_ids, |s| {
-                s.canvas().concat(&transform);
-            });
+        if let Some(clips) = clip_bounds.as_ref() {
+            for (bounds, corners, transform) in clips.iter() {
+                self.surfaces.apply_mut(surface_ids, |s| {
+                    s.canvas().concat(transform);
+                });
 
-            if let Some(corners) = corners {
-                let rrect = RRect::new_rect_radii(bounds, &corners);
+                if let Some(corners) = corners {
+                    let rrect = RRect::new_rect_radii(*bounds, corners);
+                    self.surfaces.apply_mut(surface_ids, |s| {
+                        s.canvas()
+                            .clip_rrect(rrect, skia::ClipOp::Intersect, antialias);
+                    });
+                } else {
+                    self.surfaces.apply_mut(surface_ids, |s| {
+                        s.canvas()
+                            .clip_rect(*bounds, skia::ClipOp::Intersect, antialias);
+                    });
+                }
+
+                // This renders a red line around clipped
+                // shapes (frames).
+                if self.options.is_debug_visible() {
+                    let mut paint = skia::Paint::default();
+                    paint.set_style(skia::PaintStyle::Stroke);
+                    paint.set_color(skia::Color::from_argb(255, 255, 0, 0));
+                    paint.set_stroke_width(4.);
+                    self.surfaces
+                        .canvas(fills_surface_id)
+                        .draw_rect(*bounds, &paint);
+                }
+
                 self.surfaces.apply_mut(surface_ids, |s| {
                     s.canvas()
-                        .clip_rrect(rrect, skia::ClipOp::Intersect, antialias);
-                });
-            } else {
-                self.surfaces.apply_mut(surface_ids, |s| {
-                    s.canvas()
-                        .clip_rect(bounds, skia::ClipOp::Intersect, antialias);
+                        .concat(&transform.invert().unwrap_or(Matrix::default()));
                 });
             }
-
-            // This renders a red line around clipped
-            // shapes (frames).
-            if self.options.is_debug_visible() {
-                let mut paint = skia::Paint::default();
-                paint.set_style(skia::PaintStyle::Stroke);
-                paint.set_color(skia::Color::from_argb(255, 255, 0, 0));
-                paint.set_stroke_width(4.);
-                self.surfaces
-                    .canvas(fills_surface_id)
-                    .draw_rect(bounds, &paint);
-            }
-
-            self.surfaces.apply_mut(surface_ids, |s| {
-                s.canvas()
-                    .concat(&transform.invert().unwrap_or(Matrix::default()));
-            });
         }
 
         // We don't want to change the value in the global state
@@ -1228,7 +1305,7 @@ impl RenderState {
         shape: &Shape,
         shape_bounds: &Rect,
         shadow: &Shadow,
-        clip_bounds: Option<(Rect, Option<Corners>, Matrix)>,
+        clip_bounds: Option<ClipStack>,
         scale: f32,
         translation: (f32, f32),
         extra_layer_blur: Option<Blur>,
@@ -1372,14 +1449,12 @@ impl RenderState {
         let mut iteration = 0;
         let mut is_empty = true;
 
-        while let Some(node_render_state) = self.pending_nodes.pop() {
-            let NodeRenderState {
-                id: node_id,
-                visited_children,
-                clip_bounds,
-                visited_mask,
-                mask,
-            } = node_render_state;
+        while let Some(mut node_render_state) = self.pending_nodes.pop() {
+            let node_id = node_render_state.id;
+            let visited_children = node_render_state.visited_children;
+            let visited_mask = node_render_state.visited_mask;
+            let mask = node_render_state.mask;
+            let clip_bounds = node_render_state.clip_bounds.clone();
 
             is_empty = false;
 
@@ -1462,7 +1537,7 @@ impl RenderState {
                             element,
                             &element.extrect(tree, scale),
                             shadow,
-                            clip_bounds,
+                            clip_bounds.clone(),
                             scale,
                             translation,
                             None,
@@ -1550,36 +1625,39 @@ impl RenderState {
                     }
                 }
 
-                if let Some((bounds, corners, transform)) = clip_bounds.as_ref() {
+                if let Some(clips) = clip_bounds.as_ref() {
                     let antialias = element.should_use_antialias(scale);
-                    let mut total_matrix = Matrix::new_identity();
-                    total_matrix.pre_scale((scale, scale), None);
-                    total_matrix.pre_translate((translation.0, translation.1));
-                    total_matrix.pre_concat(transform);
 
                     self.surfaces.canvas(SurfaceId::Current).save();
-                    self.surfaces
-                        .canvas(SurfaceId::Current)
-                        .concat(&total_matrix);
+                    for (bounds, corners, transform) in clips.iter() {
+                        let mut total_matrix = Matrix::new_identity();
+                        total_matrix.pre_scale((scale, scale), None);
+                        total_matrix.pre_translate((translation.0, translation.1));
+                        total_matrix.pre_concat(transform);
 
-                    if let Some(corners) = corners {
-                        let rrect = RRect::new_rect_radii(*bounds, corners);
-                        self.surfaces.canvas(SurfaceId::Current).clip_rrect(
-                            rrect,
-                            skia::ClipOp::Intersect,
-                            antialias,
-                        );
-                    } else {
-                        self.surfaces.canvas(SurfaceId::Current).clip_rect(
-                            *bounds,
-                            skia::ClipOp::Intersect,
-                            antialias,
-                        );
+                        self.surfaces
+                            .canvas(SurfaceId::Current)
+                            .concat(&total_matrix);
+
+                        if let Some(corners) = corners {
+                            let rrect = RRect::new_rect_radii(*bounds, corners);
+                            self.surfaces.canvas(SurfaceId::Current).clip_rrect(
+                                rrect,
+                                skia::ClipOp::Intersect,
+                                antialias,
+                            );
+                        } else {
+                            self.surfaces.canvas(SurfaceId::Current).clip_rect(
+                                *bounds,
+                                skia::ClipOp::Intersect,
+                                antialias,
+                            );
+                        }
+
+                        self.surfaces
+                            .canvas(SurfaceId::Current)
+                            .concat(&total_matrix.invert().unwrap_or_default());
                     }
-
-                    self.surfaces
-                        .canvas(SurfaceId::Current)
-                        .concat(&total_matrix.invert().unwrap_or_default());
 
                     self.surfaces
                         .draw_into(SurfaceId::DropShadows, SurfaceId::Current, None);
@@ -1596,7 +1674,7 @@ impl RenderState {
 
                 self.render_shape(
                     element,
-                    clip_bounds,
+                    clip_bounds.clone(),
                     SurfaceId::Fills,
                     SurfaceId::Strokes,
                     SurfaceId::InnerShadows,
@@ -1624,7 +1702,7 @@ impl RenderState {
             self.pending_nodes.push(NodeRenderState {
                 id: node_id,
                 visited_children: true,
-                clip_bounds,
+                clip_bounds: clip_bounds.clone(),
                 visited_mask: false,
                 mask,
             });
@@ -1651,7 +1729,7 @@ impl RenderState {
                     self.pending_nodes.push(NodeRenderState {
                         id: **child_id,
                         visited_children: false,
-                        clip_bounds: children_clip_bounds,
+                        clip_bounds: children_clip_bounds.clone(),
                         visited_mask: false,
                         mask: false,
                     });
