@@ -1158,8 +1158,10 @@ impl RenderState {
         paint.set_alpha_f(element.opacity());
 
         if let Some(frame_blur) = Self::frame_clip_layer_blur(element) {
+            let scale = self.get_scale();
+            let sigma = frame_blur.value * scale;
             if let Some(filter) =
-                skia::image_filters::blur((frame_blur.value, frame_blur.value), None, None, None)
+                skia::image_filters::blur((sigma, sigma), None, None, None)
             {
                 paint.set_image_filter(filter);
             }
