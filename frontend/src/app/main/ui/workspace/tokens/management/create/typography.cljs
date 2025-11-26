@@ -25,10 +25,8 @@
    [app.main.ui.ds.foundations.typography.heading :refer [heading*]]
    [app.main.ui.ds.notifications.context-notification :refer [context-notification*]]
    [app.main.ui.forms :as forms]
-   [app.main.ui.workspace.tokens.management.create.combobox-token-fonts :refer [font-picker-combobox*]]
-   [app.main.ui.workspace.tokens.management.create.form-input-token :refer [form-input-token*
-                                                                            token-composite-value-input*
-                                                                            ]]
+   [app.main.ui.workspace.tokens.management.create.combobox-token-fonts :refer [font-picker-composite-combobox*]]
+   [app.main.ui.workspace.tokens.management.create.form-input-token :refer [token-composite-value-input*]]
    [app.util.dom :as dom]
    [app.util.forms :as fm]
    [app.util.i18n :refer [tr]]
@@ -39,75 +37,89 @@
 
 (mf/defc composite-form*
   [{:keys [token tokens] :as props}]
-  ;; TODO: Añadir valores on edit
   (let [letter-spacing-sub-token
         (mf/with-memo [token]
           (if-let [value (get token :value)]
             {:type :letter-spacing
-             :value (get-in token [:value :font-spacing])}
+             :value (cto/join-font-family (get value :letter-spacing))}
             {:type :letter-spacing}))
 
         font-family-sub-token
         (mf/with-memo [token]
           (if-let [value (get token :value)]
             {:type :font-family
-             :value (get-in token [:value :font-family])}
+             :value (get value :font-family)}
             {:type :font-family}))
 
         font-size-sub-token
         (mf/with-memo [token]
-          {:type :font-size})
+          (if-let [value (get token :value)]
+            {:type :font-size
+             :value (get value :font-size)}
+            {:type :font-size}))
 
         font-weight-sub-token
         (mf/with-memo [token]
-          {:type :font-weight})
+          (if-let [value (get token :value)]
+            {:type :font-weight
+             :value (get value :font-weight)}
+            {:type :font-weight}))
 
         ;; TODO: Review this type
         line-height-sub-token
         (mf/with-memo [token]
-          {:type :number})
+          (if-let [value (get token :value)]
+            {:type :number
+             :value (get value :line-height)}
+            {:type :number}))
 
         text-case-sub-token
         (mf/with-memo [token]
-          {:type :text-case})
+          (if-let [value (get token :value)]
+            {:type :text-case
+             :value (get value :text-case)}
+            {:type :text-case}))
 
         text-decoration-sub-token
         (mf/with-memo [token]
-          {:type :text-decoration})]
+          (if-let [value (get token :value)]
+            {:type :text-decoration
+             :value (get value :text-decoration)}
+            {:type :text-decoration}))]
 
-    [:div {:class (stl/css :inputs-wrapper)}
+    [:*
      [:div {:class (stl/css :input-row)}
-      ;;  [:> font-picker-combobox*
-      ;;   {:icon i/text-font-family
-      ;;    :placeholder (tr "workspace.tokens.token-font-family-value-enter")
-      ;;    :aria-label  (tr "workspace.tokens.token-font-family-value")
-      ;;    :name :font-family
-      ;;    :token font-family-sub-token
-      ;;    :tokens tokens}]]
-      ;; [:div {:class (stl/css :input-row)}
-      ;;  [:> form-input-token*
-      ;;   {:aria-label "Font Size"
-      ;;    :icon i/text-font-size
-      ;;    :placeholder (tr "workspace.tokens.font-size-value-enter")
-      ;;    :name :font-size
-      ;;    :token font-size-sub-token
-      ;;    :tokens tokens}]]
-      ;; [:div {:class (stl/css :input-row)}
-      ;;  [:> form-input-token*
-      ;;   {:aria-label "Font Weight"
-      ;;    :icon i/text-font-weight
-      ;;    :placeholder (tr "workspace.tokens.font-weight-value-enter")
-      ;;    :name :font-weight
-      ;;    :token font-weight-sub-token
-      ;;    :tokens tokens}]]
-      ;; [:div {:class (stl/css :input-row)}
-      ;;  [:> form-input-token*
-      ;;   {:aria-label "Line Height"
-      ;;    :icon i/text-lineheight
-      ;;    :placeholder (tr "workspace.tokens.line-height-value-enter")
-      ;;    :name :line-height
-      ;;    :token line-height-sub-token
-      ;;    :tokens tokens}]]
+       [:> font-picker-composite-combobox*
+        {:icon i/text-font-family
+         :placeholder (tr "workspace.tokens.token-font-family-value-enter")
+         :aria-label  (tr "workspace.tokens.token-font-family-value")
+         :name :font-family
+         :token font-family-sub-token
+         :tokens tokens}]]
+      [:div {:class (stl/css :input-row)}
+       [:> token-composite-value-input*
+        {:aria-label "Font Size"
+         :icon i/text-font-size
+         :placeholder (tr "workspace.tokens.font-size-value-enter")
+         :name :font-size
+         :token font-size-sub-token
+         :tokens tokens}]]
+      [:div {:class (stl/css :input-row)}
+       [:> token-composite-value-input*
+        {:aria-label "Font Weight"
+         :icon i/text-font-weight
+         :placeholder (tr "workspace.tokens.font-weight-value-enter")
+         :name :font-weight
+         :token font-weight-sub-token
+         :tokens tokens}]]
+      [:div {:class (stl/css :input-row)}
+       [:> token-composite-value-input*
+        {:aria-label "Line Height"
+         :icon i/text-lineheight
+         :placeholder (tr "workspace.tokens.line-height-value-enter")
+         :name :line-height
+         :token line-height-sub-token
+         :tokens tokens}]]
       [:div {:class (stl/css :input-row)}
        [:> token-composite-value-input*
         {:aria-label "Letter Spacing"
@@ -123,17 +135,26 @@
          :placeholder (tr "workspace.tokens.text-case-value-enter")
          :name :text-case
          :token text-case-sub-token
-         :tokens tokens}]]]]))
+         :tokens tokens}]]
+      [:div {:class (stl/css :input-row)}
+       [:> token-composite-value-input*
+        {:aria-label "Text Decoration"
+         :icon i/text-underlined
+         :placeholder (tr "workspace.tokens.text-decoration-value-enter")
+         :name :text-decoration
+         :token text-decoration-sub-token
+         :tokens tokens}]]]))
 
-      ;; #_[:div {:class (stl/css :input-row)}
-      ;;    [:> form-input-token*
-      ;;     {:aria-label "Text Decoration"
-      ;;      :icon i/text-underlined
-      ;;      :placeholder (tr "workspace.tokens.text-decoration-value-enter")
-      ;;      :name :text-decoration
-      ;;      :token text-decoration-sub-token
-      ;;      :tokens tokens}]]
-
+(mf/defc reference-form*
+  [{:keys [token tokens] :as props}]
+  [:div {:class (stl/css :input-row)}
+   [:> token-composite-value-input*
+    {:placeholder (tr "workspace.tokens.reference-composite")
+     :aria-label (tr "labels.reference")
+     :icon i/text-typography
+     :name :reference
+     :token token
+     :tokens tokens}]])
 
 (defn- make-schema
   [tokens-tree active-tab]
@@ -171,6 +192,15 @@
        (let [reference (get value :reference)]
          (if (and reference name)
            (not (cto/token-value-self-reference? name reference))
+           true)))]
+
+    [:fn {:error/field [:value :line-height]
+          :error/fn #(tr "workspace.tokens.composite-line-height-needs-font-size")}
+     (fn [{:keys [value]}]
+       (let [line-heigh (get value :line-height)
+             font-size (get value :font-size)]
+         (if (and line-heigh (not font-size))
+           false
            true)))]
 
     ;; TODO: Añadir tradu
@@ -221,18 +251,29 @@
 
         initial
         (mf/with-memo [token]
-          (let [value (:value token)]
-            {:name  (:name token "")
-             :value (if (string? value)
-                      {:reference value}
-                      (select-keys value
-                                   [:font-family
-                                    :font-size
-                                    :font-weight
-                                    :line-height
-                                    :letter-spacing
-                                    :text-case
-                                    :text-decoration]))
+          (let [value (:value token)
+                processed-value
+                (cond
+                  (string? value)
+                  {:reference value}
+
+                  (map? value)
+                  (let [value (cond-> value
+                                (:font-family value)
+                                (update :font-family cto/join-font-family))]
+                    (select-keys value
+                                 [:font-family
+                                  :font-size
+                                  :font-weight
+                                  :line-height
+                                  :letter-spacing
+                                  :text-case
+                                  :text-decoration]))
+                  :else
+                  {})]
+
+            {:name        (:name token "")
+             :value       processed-value
              :description (:description token "")}))
 
         form
@@ -310,10 +351,7 @@
                       (modal/hide))))))))
 
         _ (prn "form" @form)
-        ;; _ (app.common.pprint/pprint @form)
         ]
-
-    (prn "FORM" initial)
 
     [:> forms/form* {:class (stl/css :form-wrapper)
                      :form form
@@ -351,18 +389,13 @@
                           :value "reference"
                           :title (tr "workspace.tokens.use-reference")
                           :id "reference-opt"}]]]
-      (if (= active-tab :composite)
+      [:div {:class (stl/css :inputs-wrapper)}
+       (if (= active-tab :composite)
         [:> composite-form* {:token token
                              :tokens tokens}]
 
-        [:div {:class (stl/css :input-row)}
-         [:> token-composite-value-input*
-          {:placeholder (tr "workspace.tokens.reference-composite")
-           :aria-label (tr "labels.reference")
-           :icon i/text-typography
-           :name :reference
-           :token token
-           :tokens tokens}]])
+        [:> reference-form* {:token token
+                             :tokens tokens}])]
 
       [:div {:class (stl/css :input-row)}
        [:> forms/form-input* {:id "token-description"

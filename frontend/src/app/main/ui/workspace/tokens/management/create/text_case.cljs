@@ -46,8 +46,6 @@
 
      [:value ::sm/text]
 
-     [:resolved-value ::sm/any]
-
      [:description {:optional true}
       [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
 

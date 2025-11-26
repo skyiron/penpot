@@ -44,9 +44,7 @@
        [:fn {:error/fn #(tr "workspace.tokens.token-name-duplication-validation-error" (:value %))}
         #(not (cft/token-name-path-exists? % tokens-tree))]]]
 
-     [:value ::sm/text]
-
-     [:resolved-value ::sm/any]
+     [:value ::sm/text] 
 
      [:description {:optional true}
       [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]

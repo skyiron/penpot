@@ -16,7 +16,6 @@
    [app.util.i18n :refer [tr]]
    [beicon.v2.core :as rx]
    [cuerdas.core :as str]
-   [clojure.core :as c]
    [rumext.v2 :as mf]))
 
 (defn- resolve-value
@@ -24,12 +23,11 @@
   (let [token
         {:value value
          :name "__PENPOT__TOKEN__NAME__PLACEHOLDER__"}
-
+        _ (prn "resolve-value called with value:" value)
         tokens
         (-> tokens
             ;; Remove previous token when renaming a token
-            ;; FIXME: revisit
-            ;; (dissoc (:name prev-token))
+            (dissoc (:name prev-token))
             (update (:name token) #(ctob/make-token (merge % prev-token token))))]
 
     (->> tokens
@@ -37,6 +35,7 @@
          (rx/mapcat
           (fn [resolved-tokens]
             (let [{:keys [errors resolved-value] :as resolved-token} (get resolved-tokens (:name token))]
+              (prn "resolved-token in resolve-value:" resolved-value errors)
               (if resolved-value
                 (rx/of {:value resolved-value})
                 (rx/of {:error (first errors)}))))))))
@@ -57,12 +56,10 @@
         value
         (get-in @form [:data input-name] "")
 
-        ;; TODO: MOdificar este stream para que si llega un token de
-        ;; composite mire si el name es diferente a value
         resolve-stream
         (mf/with-memo [token]
-          (if-let [value (:value token)]
-            (rx/behavior-subject value)
+          (if (contains? token :value)
+            (rx/behavior-subject (:value token))
             (rx/subject)))
 
         hint*
@@ -76,6 +73,7 @@
          (mf/deps resolve-stream input-name)
          (fn [event]
            (let [value (-> event dom/get-target dom/get-input-value)]
+             (prn "entro en el on-change form input token" value) 
              (fm/on-input-change form input-name value true)
              (rx/push! resolve-stream value))))
 
@@ -92,13 +90,15 @@
 
     (mf/with-effect [resolve-stream tokens token input-name touched?]
       (let [subs (->> resolve-stream
-                      (rx/debounce 300)
+                      ;; (rx/debounce 300)
+                      (rx/tap (fn [v] (prn "value en el effect form input token" v)))
                       (rx/mapcat (partial resolve-value tokens token))
                       (rx/map (fn [result]
                                 (d/update-when result :error
                                                (fn [error]
                                                  ((:error/fn error) (:error/value error))))))
                       (rx/subs! (fn [{:keys [error value]}]
+                                  (prn "llega al subs del form input token" value error)
                                   (when touched?
                                     (if error
                                       (do
@@ -123,7 +123,6 @@
                  (not-empty)))]
      (swap! form (fn [state]
                    (-> state
-                       ;; (assoc-in [:touched :value field] true)
                        (assoc-in [:data :value field] (if trim? (str/trim value) value))
                        (update :errors clean-errors)
                        (update :extra-errors clean-errors)))))))
@@ -140,8 +139,6 @@
         value
         (get-in @form [:data :value input-name] "")
 
-        ;; TODO: MOdificar este stream para que si llega un token de
-        ;; composite mire si el name es diferente a value
         resolve-stream
         (mf/with-memo [token]
           (if-let [value (get-in token [:value input-name])]
@@ -168,7 +165,7 @@
                                 :hint-message (:message hint)
                                 :hint-type (:type hint)})
         props
-        (if (and error)
+        (if error
           (mf/spread-props props {:hint-type "error"
                                   :hint-message (:message error)})
           props)]

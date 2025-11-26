@@ -46,8 +46,6 @@
 
      [:value ::sm/text]
 
-     [:resolved-value ::sm/any]
-
      [:description {:optional true}
       [:string {:max 2048 :error/fn #(tr "errors.field-max-length" 2048)}]]]
 
@@ -156,7 +154,8 @@
                                             :value (:value valid-token)
                                             :description description}))
                       (dwtp/propagate-workspace-tokens)
-                      (modal/hide))))))))]
+                      (modal/hide))))))))
+                      _ (prn @form)]
 
     [:> fc/form* {:class (stl/css :form-wrapper)
                   :form form
